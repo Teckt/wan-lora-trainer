@@ -1,66 +1,69 @@
-# Core ML libraries
-# huggingface_hub
-# git+https://github.com/huggingface/diffusers.git
-# git+https://github.com/huggingface/transformers.git
-git+https://github.com/huggingface/peft.git
-# accelerate
+# WAN LoRA Trainer Requirements
 
-# # LoRA and quantization
-# bitsandbytes
+# Core ML dependencies
+torch>=2.1.0
+torchvision>=0.16.0
+torchaudio>=2.1.0
 
-# # Video/image processing
-# opencv-python
-# Pillow
-# imageio
-# imageio-ffmpeg
-# # av>=10.0.0
-# # decord>=0.6.0
+# Diffusion models and transformers
+diffusers>=0.30.0
+transformers>=4.35.0
+accelerate>=0.24.0
 
-# # Audio processing (for video)
-# # librosa>=0.10.0
+# Quantization backends
+optimum>=1.15.0
+optimum[quanto]>=1.15.0
+bitsandbytes>=0.41.0
 
-# # Data handling
-# datasets
-# # numpy>=1.24.0
-# # pandas>=2.0.0
-# # safetensors>=0.4.0
+# Video and image processing
+opencv-python>=4.8.0
+Pillow>=10.0.0
+imageio>=2.31.0
+imageio-ffmpeg>=0.4.8
+av>=10.0.0
+decord>=0.6.0
+scikit-image>=0.21.0
 
-# # Utilities
-# tqdm
-# wandb  # Optional: for experiment tracking
-# tensorboard
+# Audio processing
+librosa>=0.10.0
+soundfile>=0.12.0
 
-# # # Development tools
-# # pytest>=7.4.0
-# # black>=23.7.0
-# # flake8>=6.0.0
+# Data handling
+numpy>=1.24.0
+pandas>=2.0.0
+datasets>=2.17.0
+jsonlines>=3.1.0
+safetensors>=0.4.0
 
-# # Optional: Flash Attention for better memory efficiency
-# # flash-attn>=2.3.0  # Uncomment if you have compatible GPU
+# Training utilities
+wandb>=0.16.0
+tensorboard>=2.14.0
+tqdm>=4.65.0
 
-# --extra-index-url https://download.pytorch.org/whl/cu126
-# xformers
-# scikit-image
+# Memory optimization
+xformers>=0.0.22
+flash-attn>=2.3.0
 
-# # # Data handling
-# # numpy
-# # # pandas
-# # jsonlines
+# Utility libraries
+pydantic>=2.4.0
+rich>=13.6.0
+omegaconf>=2.3.0
+hydra-core>=1.3.0
+pyyaml>=6.0.0
+psutil>=5.9.0
+pathlib2>=2.3.7
 
-# # # GUI framework
-# # gradio>=4.0.0
+# GUI and visualization
+gradio>=4.0.0
 
-# # # Progress and logging
-# # tqdm
-# # wandb
-# # tensorboard
+# Development and testing
+pytest>=7.4.0
+black>=23.9.0
+isort>=5.12.0
+flake8>=6.1.0
 
-# # # File handling
-# # pathlib
-
-# # # Configuration management
-# # pyyaml
-# # omegaconf
-
-# # # Utility libraries
-# # psutil
+# Optional dependencies for specific features
+# Uncomment as needed:
+# apex  # For advanced mixed precision
+# triton>=2.1.0  # For custom kernels
+# deepspeed>=0.12.0  # For advanced distributed training

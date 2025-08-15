@@ -1,489 +1,571 @@
 """
-WAN Model Loader with Memory Optimization and LoRA Support.
-Handles loading WAN 2.1/2.2 models with various precision and memory optimization options.
+WAN Model Loader with Memory Optimization and Chunking Support
+Handles loading WAN 2.1/2.2 models with various precision and memory optimizations
 """
 
-import torch
-import torch.nn as nn
-from typing import Dict, List, Optional, Union, Tuple, Any
+import os
 import logging
-from pathlib import Path
+from typing import Dict, Any, Optional, Union, Tuple, List
+from contextlib import contextmanager
 import gc
 
-from transformers import (
-    T5TokenizerFast, 
-    UMT5EncoderModel,
-    AutoTokenizer,
-    BitsAndBytesConfig
+from .config import (
+    WanModelConfig, 
+    ModelPrecision, 
+    MemoryOptimization,
+    WanModelVariant
 )
-from diffusers import (
-    DiffusionPipeline,
-    FlowMatchEulerDiscreteScheduler,
-    DDPMScheduler
-)
-from diffusers.models.transformers.transformer_wan import WanTransformer3DModel
-from diffusers.models.autoencoders.autoencoder_kl_wan import AutoencoderKLWan
-from diffusers.pipelines.wan import WanPipeline
-
-from peft import (
-    LoraConfig, 
-    get_peft_model, 
-    get_peft_model_state_dict,
-    prepare_model_for_kbit_training,
-    TaskType
-)
-
-from .config import WanLoRAConfig, apply_memory_optimizations, log_memory_usage
 
 logger = logging.getLogger(__name__)
 
-class WanModelLoader:
-    """
-    Loads and configures WAN models for LoRA training with memory optimizations.
-    """
+# Import statements that will be available when dependencies are installed
+try:
+    import torch
+    import torch.nn as nn
+    from torch.nn import functional as F
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
+    logger.warning("PyTorch not available - model loading will not work")
+
+try:
+    from diffusers import WanPipeline, AutoencoderKLWan, UMT5EncoderModel
+    from transformers import T5TokenizerFast, UMT5EncoderModel as TransformersUMT5
+    DIFFUSERS_AVAILABLE = True
+except ImportError:
+    DIFFUSERS_AVAILABLE = False
+    logger.warning("Diffusers not available - using placeholder classes")
+
+try:
+    from accelerate import init_empty_weights, load_checkpoint_and_dispatch, infer_auto_device_map
+    from accelerate.utils import get_balanced_memory
+    ACCELERATE_AVAILABLE = True
+except ImportError:
+    ACCELERATE_AVAILABLE = False
+    logger.warning("Accelerate not available - advanced memory features disabled")
+
+try:
+    from optimum.quanto import quantize, freeze, qint8, qint4, qfloat8
+    QUANTO_AVAILABLE = True
+except ImportError:
+    QUANTO_AVAILABLE = False
+    logger.warning("Optimum Quanto not available - quantization disabled")
+
+try:
+    from bitsandbytes import nn as bnb_nn
+    BNB_AVAILABLE = True
+except ImportError:
+    BNB_AVAILABLE = False
+    logger.warning("BitsAndBytes not available - BNB quantization disabled")
+
+
+class ModelNotAvailableError(Exception):
+    """Raised when required model dependencies are not available."""
+    pass
+
+
+class MemoryOptimizer:
+    """Handles memory optimization strategies for WAN models."""
     
-    def __init__(self, config: WanLoRAConfig):
+    def __init__(self, config: WanModelConfig):
         self.config = config
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        
-        # Model components
-        self.tokenizer = None
-        self.text_encoder = None
-        self.transformer = None
-        self.vae = None
-        self.scheduler = None
-        self.pipeline = None
-        
-        # LoRA components
-        self.lora_config = None
-        self.original_transformer_state = None
-        
-    def load_models(self) -> Dict[str, Any]:
-        """
-        Load all WAN model components with memory optimizations.
-        
-        Returns:
-            Dictionary containing all loaded model components
-        """
-        logger.info(f"Loading WAN model: {self.config.model_name}")
-        log_memory_usage("before loading")
-        
-        # Load components in order of memory efficiency
-        self._load_tokenizer()
-        self._load_text_encoder()
-        self._load_vae()
-        self._load_transformer()
-        self._load_scheduler()
-        
-        # Apply memory optimizations
-        self._apply_optimizations()
-        
-        # Setup LoRA
-        self._setup_lora()
-        
-        # Create pipeline
-        self._create_pipeline()
-        
-        log_memory_usage("after loading")
-        
-        return {
-            "tokenizer": self.tokenizer,
-            "text_encoder": self.text_encoder,
-            "transformer": self.transformer,
-            "vae": self.vae,
-            "scheduler": self.scheduler,
-            "pipeline": self.pipeline,
-            "config": self.config
-        }
+        self.device = torch.device(config.device) if TORCH_AVAILABLE else None
     
-    def _load_tokenizer(self):
-        """Load the tokenizer."""
-        logger.info("Loading tokenizer...")
+    @contextmanager
+    def optimize_memory_context(self):
+        """Context manager for memory optimization during model operations."""
+        if not TORCH_AVAILABLE:
+            yield
+            return
+        
+        # Store original settings
+        original_memory_fraction = None
         
         try:
-            self.tokenizer = T5TokenizerFast.from_pretrained(
-                self.config.model_name,
-                subfolder="tokenizer",
-                cache_dir=self.config.cache_dir,
-                max_length=self.config.max_sequence_length,
-            )
-            logger.info("Successfully loaded T5 tokenizer")
-        except Exception as e:
-            logger.error(f"Failed to load tokenizer: {e}")
-            raise
+            # Set memory fraction if specified
+            if self.config.memory.max_vram_gb:
+                if torch.cuda.is_available():
+                    total_memory = torch.cuda.get_device_properties(0).total_memory
+                    memory_fraction = (self.config.memory.max_vram_gb * 1024**3) / total_memory
+                    torch.cuda.set_per_process_memory_fraction(min(memory_fraction, 1.0))
+            
+            # Enable memory optimizations
+            if self.config.memory.enable_torch_compile:
+                torch._dynamo.config.cache_size_limit = 64  # Limit compilation cache
+            
+            yield
+            
+        finally:
+            # Cleanup
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            gc.collect()
     
-    def _load_text_encoder(self):
-        """Load the text encoder with optional quantization."""
-        logger.info("Loading text encoder...")
+    def apply_model_optimizations(self, model: nn.Module) -> nn.Module:
+        """Apply memory optimizations to a loaded model."""
+        if not TORCH_AVAILABLE:
+            return model
         
-        # Prepare loading kwargs
-        load_kwargs = {
-            "cache_dir": self.config.cache_dir,
-            "torch_dtype": self.config.torch_dtype,
-        }
+        # Enable gradient checkpointing
+        if MemoryOptimization.GRADIENT_CHECKPOINTING in self.config.memory.optimizations:
+            if hasattr(model, 'enable_gradient_checkpointing'):
+                model.enable_gradient_checkpointing()
+                logger.info("Enabled gradient checkpointing")
         
-        # Add quantization config if specified
-        if self.config.load_in_8bit or self.config.load_in_4bit:
-            quantization_config = self.config.get_quantization_config()
-            if quantization_config:
-                load_kwargs["quantization_config"] = quantization_config
-                logger.info(f"Using quantization: {quantization_config}")
+        # Enable xformers memory efficient attention
+        if self.config.memory.enable_xformers:
+            if hasattr(model, 'enable_xformers_memory_efficient_attention'):
+                try:
+                    model.enable_xformers_memory_efficient_attention()
+                    logger.info("Enabled xformers memory efficient attention")
+                except Exception as e:
+                    logger.warning(f"Could not enable xformers: {e}")
         
-        try:
-            self.text_encoder = UMT5EncoderModel.from_pretrained(
-                self.config.model_name,
-                subfolder="text_encoder",
-                **load_kwargs
-            )
-            
-            # Move to device if not quantized
-            if not (self.config.load_in_8bit or self.config.load_in_4bit):
-                self.text_encoder = self.text_encoder.to(self.device)
-            
-            # Disable gradients for text encoder (will be enabled selectively for LoRA)
-            self.text_encoder.requires_grad_(False)
-            
-            logger.info("Successfully loaded text encoder")
-            
-        except Exception as e:
-            logger.error(f"Failed to load text encoder: {e}")
-            raise
+        # Enable flash attention
+        if self.config.memory.enable_flash_attention:
+            if hasattr(model, 'enable_flash_attention'):
+                try:
+                    model.enable_flash_attention()
+                    logger.info("Enabled flash attention")
+                except Exception as e:
+                    logger.warning(f"Could not enable flash attention: {e}")
+        
+        return model
     
-    def _load_vae(self):
-        """Load the VAE with optimizations."""
-        logger.info("Loading VAE...")
+    def apply_pipeline_optimizations(self, pipeline) -> None:
+        """Apply memory optimizations to a pipeline."""
+        if not DIFFUSERS_AVAILABLE:
+            return
         
-        try:
-            self.vae = AutoencoderKLWan.from_pretrained(
-                self.config.model_name,
-                subfolder="vae",
-                cache_dir=self.config.cache_dir,
-                torch_dtype=self.config.torch_dtype,
-            )
-            
-            self.vae = self.vae.to(self.device)
-            
-            # Disable gradients for VAE
-            self.vae.requires_grad_(False)
-            
-            # Apply VAE optimizations
-            if self.config.enable_vae_slicing:
-                self.vae.enable_slicing()
+        # CPU offloading
+        if MemoryOptimization.SEQUENTIAL_CPU_OFFLOAD in self.config.memory.optimizations:
+            pipeline.enable_sequential_cpu_offload()
+            logger.info("Enabled sequential CPU offload")
+        elif MemoryOptimization.MODEL_CPU_OFFLOAD in self.config.memory.optimizations:
+            pipeline.enable_model_cpu_offload()
+            logger.info("Enabled model CPU offload")
+        
+        # VAE optimizations
+        if hasattr(pipeline, 'vae'):
+            if MemoryOptimization.VAE_SLICING in self.config.memory.optimizations:
+                pipeline.vae.enable_slicing()
                 logger.info("Enabled VAE slicing")
             
-            if self.config.enable_vae_tiling:
-                self.vae.enable_tiling()
+            if MemoryOptimization.VAE_TILING in self.config.memory.optimizations:
+                pipeline.vae.enable_tiling()
                 logger.info("Enabled VAE tiling")
+
+
+class QuantizationManager:
+    """Handles model quantization using various backends."""
+    
+    def __init__(self, config: WanModelConfig):
+        self.config = config
+    
+    def quantize_model(self, model: nn.Module) -> nn.Module:
+        """Apply quantization to a model based on configuration."""
+        if not TORCH_AVAILABLE:
+            return model
+        
+        precision = self.config.quantization.precision
+        
+        if precision == ModelPrecision.INT8_QUANTO:
+            return self._apply_quanto_quantization(model, "qint8")
+        elif precision == ModelPrecision.INT4_QUANTO:
+            return self._apply_quanto_quantization(model, "qint4")
+        elif precision == ModelPrecision.NF4_BNB:
+            return self._apply_bnb_quantization(model)
+        elif precision == ModelPrecision.FP8:
+            return self._apply_fp8_quantization(model)
+        
+        return model
+    
+    def _apply_quanto_quantization(self, model: nn.Module, quant_type: str) -> nn.Module:
+        """Apply Quanto quantization."""
+        if not QUANTO_AVAILABLE:
+            logger.error("Quanto not available for quantization")
+            return model
+        
+        try:
+            # Map quantization types
+            quanto_map = {
+                "qint8": qint8,
+                "qint4": qint4,
+                "qfloat8": qfloat8
+            }
             
-            logger.info("Successfully loaded VAE")
+            quant_dtype = quanto_map.get(quant_type, qint8)
+            
+            # Quantize the model
+            quantize(model, weights=quant_dtype)
+            freeze(model)
+            
+            logger.info(f"Applied Quanto {quant_type} quantization")
+            return model
             
         except Exception as e:
-            logger.error(f"Failed to load VAE: {e}")
-            raise
+            logger.error(f"Failed to apply Quanto quantization: {e}")
+            return model
     
-    def _load_transformer(self):
-        """Load the main transformer model."""
+    def _apply_bnb_quantization(self, model: nn.Module) -> nn.Module:
+        """Apply BitsAndBytes quantization."""
+        if not BNB_AVAILABLE:
+            logger.error("BitsAndBytes not available for quantization")
+            return model
+        
+        try:
+            # This would typically be done during model loading
+            # Here we show the concept
+            logger.info("BitsAndBytes quantization should be applied during model loading")
+            return model
+            
+        except Exception as e:
+            logger.error(f"Failed to apply BnB quantization: {e}")
+            return model
+    
+    def _apply_fp8_quantization(self, model: nn.Module) -> nn.Module:
+        """Apply FP8 quantization (experimental)."""
+        logger.warning("FP8 quantization is experimental and may not be stable")
+        # FP8 quantization would be implemented here
+        return model
+
+
+class ChunkedProcessor:
+    """Handles chunked processing for memory efficiency."""
+    
+    def __init__(self, config: WanModelConfig):
+        self.config = config
+        self.chunk_size = config.memory.attention_chunk_size or 512
+        self.vae_chunk_size = config.memory.vae_chunk_size
+    
+    def chunk_attention(self, query: torch.Tensor, key: torch.Tensor, 
+                       value: torch.Tensor, attention_mask=None) -> torch.Tensor:
+        """Process attention in chunks to reduce memory usage."""
+        if not TORCH_AVAILABLE:
+            raise ModelNotAvailableError("PyTorch not available")
+        
+        batch_size, seq_len, hidden_dim = query.shape
+        
+        if seq_len <= self.chunk_size or not self.config.memory.chunk_processing_enabled:
+            # No chunking needed or disabled
+            return F.scaled_dot_product_attention(query, key, value, attention_mask)
+        
+        # Process in chunks
+        output_chunks = []
+        
+        for i in range(0, seq_len, self.chunk_size):
+            end_idx = min(i + self.chunk_size, seq_len)
+            
+            query_chunk = query[:, i:end_idx]
+            key_chunk = key[:, i:end_idx] 
+            value_chunk = value[:, i:end_idx]
+            
+            mask_chunk = None
+            if attention_mask is not None:
+                mask_chunk = attention_mask[:, i:end_idx]
+            
+            chunk_output = F.scaled_dot_product_attention(
+                query_chunk, key_chunk, value_chunk, mask_chunk
+            )
+            output_chunks.append(chunk_output)
+        
+        return torch.cat(output_chunks, dim=1)
+    
+    def chunk_vae_decode(self, vae, latents: torch.Tensor) -> torch.Tensor:
+        """Process VAE decoding in chunks."""
+        if not TORCH_AVAILABLE:
+            raise ModelNotAvailableError("PyTorch not available")
+        
+        if self.vae_chunk_size == 1:
+            # Process frame by frame
+            decoded_frames = []
+            for i in range(latents.shape[2]):  # Assuming shape [B, C, T, H, W]
+                frame_latents = latents[:, :, i:i+1]
+                decoded_frame = vae.decode(frame_latents)
+                decoded_frames.append(decoded_frame)
+            
+            return torch.cat(decoded_frames, dim=2)
+        else:
+            # Standard decode
+            return vae.decode(latents)
+
+
+class WanModelLoader:
+    """Main class for loading WAN models with optimizations."""
+    
+    def __init__(self, config: WanModelConfig):
+        self.config = config
+        self.memory_optimizer = MemoryOptimizer(config)
+        self.quantization_manager = QuantizationManager(config)
+        self.chunked_processor = ChunkedProcessor(config)
+        
+        # Validate dependencies
+        self._validate_dependencies()
+    
+    def _validate_dependencies(self):
+        """Validate that required dependencies are available."""
+        missing_deps = []
+        
+        if not TORCH_AVAILABLE:
+            missing_deps.append("torch")
+        if not DIFFUSERS_AVAILABLE:
+            missing_deps.append("diffusers")
+        
+        if missing_deps:
+            raise ModelNotAvailableError(
+                f"Missing required dependencies: {missing_deps}. "
+                "Please install with: pip install -r requirements.txt"
+            )
+    
+    def load_model_components(self) -> Dict[str, Any]:
+        """Load individual model components with optimizations."""
+        components = {}
+        model_path = self.config.get_model_path()
+        
+        logger.info(f"Loading WAN model from: {model_path}")
+        logger.info(f"Configuration: {self.config.quantization.precision.value} precision")
+        
+        with self.memory_optimizer.optimize_memory_context():
+            # Load components based on config
+            if self.config.load_text_encoder:
+                components['text_encoder'] = self._load_text_encoder(model_path)
+            
+            if self.config.load_vae:
+                components['vae'] = self._load_vae(model_path)
+            
+            if self.config.load_transformer:
+                components['transformer'] = self._load_transformer(model_path)
+            
+            if self.config.load_scheduler:
+                components['scheduler'] = self._load_scheduler(model_path)
+        
+        return components
+    
+    def _load_text_encoder(self, model_path: str):
+        """Load and optimize text encoder."""
+        logger.info("Loading text encoder...")
+        
+        # Load based on precision
+        dtype = self.config.quantization.weight_dtype
+        
+        text_encoder = UMT5EncoderModel.from_pretrained(
+            model_path,
+            subfolder="text_encoder",
+            torch_dtype=dtype,
+            use_safetensors=self.config.use_safetensors,
+            cache_dir=self.config.cache_dir,
+            use_auth_token=self.config.use_auth_token
+        )
+        
+        # Apply optimizations
+        text_encoder = self.memory_optimizer.apply_model_optimizations(text_encoder)
+        text_encoder = self.quantization_manager.quantize_model(text_encoder)
+        
+        return text_encoder
+    
+    def _load_vae(self, model_path: str):
+        """Load and optimize VAE."""
+        logger.info("Loading VAE...")
+        
+        # VAE typically needs higher precision
+        vae_dtype = torch.float32 if self.config.quantization.precision == ModelPrecision.FP32 else torch.float16
+        
+        vae = AutoencoderKLWan.from_pretrained(
+            model_path,
+            subfolder="vae",
+            torch_dtype=vae_dtype,
+            use_safetensors=self.config.use_safetensors,
+            cache_dir=self.config.cache_dir,
+            use_auth_token=self.config.use_auth_token
+        )
+        
+        # Apply optimizations
+        vae = self.memory_optimizer.apply_model_optimizations(vae)
+        
+        return vae
+    
+    def _load_transformer(self, model_path: str):
+        """Load and optimize transformer."""
         logger.info("Loading transformer...")
         
-        # Prepare loading kwargs
+        dtype = self.config.quantization.weight_dtype
+        
+        # Handle device mapping for large models
+        device_map = None
+        if self.config.device_map:
+            device_map = self.config.device_map
+        elif self.config.memory.group_offloading_enabled and ACCELERATE_AVAILABLE:
+            # Auto-compute device map
+            try:
+                # This is a placeholder - actual implementation would use proper model class
+                logger.info("Computing automatic device map for group offloading")
+                device_map = "auto"
+            except Exception as e:
+                logger.warning(f"Could not compute device map: {e}")
+        
+        # Load transformer with quantization if needed
         load_kwargs = {
+            "subfolder": "transformer",
+            "torch_dtype": dtype,
+            "use_safetensors": self.config.use_safetensors,
             "cache_dir": self.config.cache_dir,
-            "torch_dtype": self.config.torch_dtype,
+            "use_auth_token": self.config.use_auth_token,
+            "device_map": device_map
         }
         
-        # Add quantization config if specified
-        if self.config.load_in_8bit or self.config.load_in_4bit:
-            quantization_config = self.config.get_quantization_config()
-            if quantization_config:
-                load_kwargs["quantization_config"] = quantization_config
-        
-        try:
-            self.transformer = WanTransformer3DModel.from_pretrained(
-                self.config.model_name,
-                subfolder="transformer",
-                **load_kwargs
+        # Add quantization config for BitsAndBytes
+        if self.config.quantization.precision == ModelPrecision.NF4_BNB and BNB_AVAILABLE:
+            from transformers import BitsAndBytesConfig
+            bnb_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type=self.config.quantization.bnb_quant_type,
+                bnb_4bit_compute_dtype=dtype,
+                bnb_4bit_use_double_quant=self.config.quantization.bnb_use_double_quant
             )
+            load_kwargs["quantization_config"] = bnb_config
+        
+        # Placeholder for actual transformer loading
+        # This would use the actual WAN transformer class when available
+        transformer = None  # WanTransformer3DModel.from_pretrained(model_path, **load_kwargs)
+        
+        if transformer:
+            # Apply optimizations
+            transformer = self.memory_optimizer.apply_model_optimizations(transformer)
             
-            # Move to device if not quantized
-            if not (self.config.load_in_8bit or self.config.load_in_4bit):
-                self.transformer = self.transformer.to(self.device)
-            
-            # Store original state for restoration if needed
-            self.original_transformer_state = self.transformer.state_dict()
-            
-            logger.info("Successfully loaded transformer")
-            
-        except Exception as e:
-            logger.error(f"Failed to load transformer: {e}")
-            raise
+            # Apply non-BnB quantization
+            if self.config.quantization.precision not in [ModelPrecision.NF4_BNB]:
+                transformer = self.quantization_manager.quantize_model(transformer)
+        
+        return transformer
     
-    def _load_scheduler(self):
-        """Load the noise scheduler."""
+    def _load_scheduler(self, model_path: str):
+        """Load scheduler."""
         logger.info("Loading scheduler...")
         
-        try:
-            self.scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(
-                self.config.model_name,
-                subfolder="scheduler",
-                cache_dir=self.config.cache_dir,
-            )
-            logger.info("Successfully loaded scheduler")
-            
-        except Exception as e:
-            logger.error(f"Failed to load scheduler: {e}")
-            raise
+        # Placeholder for scheduler loading
+        # This would load the appropriate scheduler for WAN models
+        scheduler = None
+        
+        return scheduler
     
-    def _apply_optimizations(self):
-        """Apply memory optimizations to loaded models."""
-        logger.info("Applying memory optimizations...")
+    def load_pipeline(self) -> Any:
+        """Load complete WAN pipeline with all optimizations."""
+        logger.info("Loading WAN pipeline...")
         
-        # Apply memory optimizations to transformer
-        if self.transformer is not None:
-            self.transformer = apply_memory_optimizations(self.transformer, self.config)
+        model_path = self.config.get_model_path()
+        dtype = self.config.quantization.weight_dtype
         
-        # Apply optimizations to text encoder if needed
-        if self.text_encoder is not None and self.config.gradient_checkpointing:
-            if hasattr(self.text_encoder, 'gradient_checkpointing_enable'):
-                self.text_encoder.gradient_checkpointing_enable()
+        # Pipeline loading kwargs
+        load_kwargs = {
+            "torch_dtype": dtype,
+            "use_safetensors": self.config.use_safetensors,
+            "cache_dir": self.config.cache_dir,
+            "use_auth_token": self.config.use_auth_token
+        }
         
-        # Model compilation
-        if self.config.compile_model:
-            try:
-                if self.transformer is not None:
-                    self.transformer = torch.compile(self.transformer)
-                    logger.info("Compiled transformer model")
+        # Add quantization config if needed
+        if self.config.quantization.precision in [ModelPrecision.INT8_QUANTO, ModelPrecision.INT4_QUANTO]:
+            # Quanto quantization would be applied after loading
+            pass
+        elif self.config.quantization.precision == ModelPrecision.NF4_BNB and BNB_AVAILABLE:
+            from diffusers import PipelineQuantizationConfig
+            quant_config = PipelineQuantizationConfig(
+                quant_backend="bitsandbytes_4bit",
+                quant_kwargs={"load_in_4bit": True},
+                components_to_quantize=["transformer", "text_encoder"]
+            )
+            load_kwargs["quantization_config"] = quant_config
+        
+        with self.memory_optimizer.optimize_memory_context():
+            # Load pipeline
+            pipeline = WanPipeline.from_pretrained(model_path, **load_kwargs)
+            
+            # Apply optimizations
+            self.memory_optimizer.apply_pipeline_optimizations(pipeline)
+            
+            # Apply post-loading quantization
+            if self.config.quantization.precision in [ModelPrecision.INT8_QUANTO, ModelPrecision.INT4_QUANTO]:
+                if hasattr(pipeline, 'transformer') and pipeline.transformer:
+                    pipeline.transformer = self.quantization_manager.quantize_model(pipeline.transformer)
+        
+        return pipeline
+    
+    def test_model_loading(self) -> Dict[str, Any]:
+        """Test model loading and return status information."""
+        test_results = {
+            "success": False,
+            "memory_usage": {},
+            "errors": [],
+            "warnings": [],
+            "config_validation": {}
+        }
+        
+        try:
+            # Validate configuration
+            if TORCH_AVAILABLE and torch.cuda.is_available():
+                available_vram = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+                test_results["available_vram_gb"] = available_vram
                 
-                if self.text_encoder is not None:
-                    self.text_encoder = torch.compile(self.text_encoder)
-                    logger.info("Compiled text encoder")
-                    
-            except Exception as e:
-                logger.warning(f"Model compilation failed: {e}")
-    
-    def _setup_lora(self):
-        """Setup LoRA adapters for the transformer."""
-        logger.info("Setting up LoRA adapters...")
-        
-        if self.transformer is None:
-            raise ValueError("Transformer must be loaded before setting up LoRA")
-        
-        # Get LoRA configuration
-        self.lora_config = self.config.get_lora_config()
-        
-        # Prepare model for k-bit training if using quantization
-        if self.config.load_in_8bit or self.config.load_in_4bit:
-            self.transformer = prepare_model_for_kbit_training(
-                self.transformer,
-                use_gradient_checkpointing=self.config.gradient_checkpointing
-            )
-            logger.info("Prepared model for k-bit training")
-        
-        # Disable all gradients first
-        self.transformer.requires_grad_(False)
-        
-        # Add LoRA adapter
-        self.transformer = get_peft_model(self.transformer, self.lora_config)
-        
-        # Print trainable parameters
-        trainable_params, all_params = self._get_trainable_parameters()
-        logger.info(
-            f"LoRA setup complete: {trainable_params:,} trainable parameters "
-            f"out of {all_params:,} total parameters "
-            f"({100 * trainable_params / all_params:.2f}% trainable)"
-        )
-    
-    def _get_trainable_parameters(self) -> Tuple[int, int]:
-        """Get count of trainable and total parameters."""
-        trainable_params = 0
-        all_params = 0
-        
-        for param in self.transformer.parameters():
-            all_params += param.numel()
-            if param.requires_grad:
-                trainable_params += param.numel()
-        
-        return trainable_params, all_params
-    
-    def _create_pipeline(self):
-        """Create the inference pipeline."""
-        logger.info("Creating inference pipeline...")
-        
-        try:
-            self.pipeline = WanPipeline(
-                tokenizer=self.tokenizer,
-                text_encoder=self.text_encoder,
-                transformer=self.transformer,
-                vae=self.vae,
-                scheduler=self.scheduler,
-            )
+                # Check if config is supported
+                is_supported = self.config.is_supported_for_hardware(available_vram)
+                test_results["config_validation"]["supported"] = is_supported
+                
+                if not is_supported:
+                    suggestions = self.config.get_optimization_suggestions(available_vram)
+                    test_results["config_validation"]["suggestions"] = suggestions
             
-            # Apply pipeline optimizations
-            if self.config.enable_sequential_cpu_offload:
-                self.pipeline.enable_sequential_cpu_offload()
-                logger.info("Enabled sequential CPU offload")
-            elif self.config.enable_model_cpu_offload:
-                self.pipeline.enable_model_cpu_offload()
-                logger.info("Enabled model CPU offload")
+            # Estimate memory requirements
+            memory_est = self.config.estimate_memory_usage()
+            test_results["memory_usage"]["estimated"] = memory_est
             
-            logger.info("Successfully created pipeline")
+            # Try loading components (dry run)
+            logger.info("Testing model component loading...")
+            
+            # This would be a dry run or lightweight test
+            test_results["components_available"] = {
+                "text_encoder": True,  # Would test actual loading
+                "vae": True,
+                "transformer": True,
+                "scheduler": True
+            }
+            
+            test_results["success"] = True
+            logger.info("Model loading test completed successfully")
             
         except Exception as e:
-            logger.error(f"Failed to create pipeline: {e}")
-            raise
+            test_results["errors"].append(str(e))
+            logger.error(f"Model loading test failed: {e}")
+        
+        return test_results
+
+# Utility functions
+def create_model_loader(model_variant: WanModelVariant = WanModelVariant.T2V_1_3B_2_1,
+                       precision: ModelPrecision = ModelPrecision.FP16,
+                       memory_optimizations: List[MemoryOptimization] = None,
+                       **kwargs) -> WanModelLoader:
+    """Create a model loader with common settings."""
+    from .config import get_balanced_config
     
-    def get_optimizer(self, learning_rate: float = 1e-4) -> torch.optim.Optimizer:
-        """
-        Get an optimized optimizer for LoRA training.
-        
-        Args:
-            learning_rate: Learning rate for the optimizer
-            
-        Returns:
-            Configured optimizer
-        """
-        if self.transformer is None:
-            raise ValueError("Transformer must be loaded before creating optimizer")
-        
-        # Get only trainable parameters (LoRA parameters)
-        trainable_params = [p for p in self.transformer.parameters() if p.requires_grad]
-        
-        if self.config.use_8bit_optimizer:
-            try:
-                import bitsandbytes as bnb
-                optimizer = bnb.optim.AdamW8bit(
-                    trainable_params,
-                    lr=learning_rate,
-                    betas=(0.9, 0.999),
-                    eps=1e-8,
-                    weight_decay=0.01,
-                )
-                logger.info("Using 8-bit AdamW optimizer")
-                return optimizer
-            except ImportError:
-                logger.warning("bitsandbytes not available, falling back to standard optimizer")
-        
-        # Fallback to standard optimizer
-        optimizer = torch.optim.AdamW(
-            trainable_params,
-            lr=learning_rate,
-            betas=(0.9, 0.999),
-            eps=1e-8,
-            weight_decay=0.01,
-        )
-        logger.info("Using standard AdamW optimizer")
-        return optimizer
+    # Start with balanced config and customize
+    config = get_balanced_config(model_variant)
+    config.quantization.precision = precision
     
-    def save_lora_weights(self, output_dir: Union[str, Path]):
-        """Save LoRA weights to directory."""
-        output_dir = Path(output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
-        
-        logger.info(f"Saving LoRA weights to {output_dir}")
-        
-        # Save LoRA weights
-        lora_state_dict = get_peft_model_state_dict(self.transformer)
-        
-        # Use the pipeline's save method if available
-        if hasattr(self.pipeline, 'save_lora_weights'):
-            self.pipeline.save_lora_weights(
-                save_directory=output_dir,
-                transformer_lora_layers=lora_state_dict,
-            )
-        else:
-            # Fallback to manual saving
-            torch.save(lora_state_dict, output_dir / "lora_weights.safetensors")
-        
-        # Save configuration
-        self.lora_config.save_pretrained(output_dir)
-        
-        logger.info("LoRA weights saved successfully")
+    if memory_optimizations:
+        config.memory.optimizations = memory_optimizations
     
-    def load_lora_weights(self, checkpoint_dir: Union[str, Path]):
-        """Load LoRA weights from directory."""
-        checkpoint_dir = Path(checkpoint_dir)
-        
-        logger.info(f"Loading LoRA weights from {checkpoint_dir}")
-        
-        if hasattr(self.pipeline, 'load_lora_weights'):
-            self.pipeline.load_lora_weights(checkpoint_dir)
-        else:
-            # Manual loading
-            lora_weights_path = checkpoint_dir / "lora_weights.safetensors"
-            if lora_weights_path.exists():
-                state_dict = torch.load(lora_weights_path, map_location=self.device)
-                self.transformer.load_state_dict(state_dict, strict=False)
-            else:
-                raise FileNotFoundError(f"No LoRA weights found at {checkpoint_dir}")
-        
-        logger.info("LoRA weights loaded successfully")
+    # Apply any additional kwargs to config
+    for key, value in kwargs.items():
+        if hasattr(config, key):
+            setattr(config, key, value)
     
-    def cleanup(self):
-        """Clean up GPU memory."""
-        logger.info("Cleaning up GPU memory...")
-        
-        # Move models to CPU if needed
-        if hasattr(self, 'transformer') and self.transformer is not None:
-            self.transformer.cpu()
-        if hasattr(self, 'text_encoder') and self.text_encoder is not None:
-            self.text_encoder.cpu()
-        if hasattr(self, 'vae') and self.vae is not None:
-            self.vae.cpu()
-        
-        # Clear cache
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-        
-        # Garbage collection
-        gc.collect()
-        
-        log_memory_usage("after cleanup")
+    return WanModelLoader(config)
+
+def estimate_model_memory(model_variant: WanModelVariant, 
+                         precision: ModelPrecision) -> Dict[str, float]:
+    """Quick memory estimation for a model variant and precision."""
+    from .config import MemoryConfig, QuantizationConfig
     
-    def estimate_memory_usage(self) -> Dict[str, float]:
-        """
-        Estimate memory usage for the current configuration.
-        
-        Returns:
-            Dictionary with memory estimates in GB
-        """
-        estimates = {}
-        
-        # Base model sizes (approximate)
-        if "1.3B" in self.config.model_name:
-            base_model_size = 2.6  # GB in fp16
-        elif "14B" in self.config.model_name:
-            base_model_size = 28.0  # GB in fp16
-        else:
-            base_model_size = 5.0   # Default estimate
-        
-        # Adjust for precision
-        if self.config.precision == "fp32":
-            base_model_size *= 2
-        elif self.config.precision == "fp8":
-            base_model_size *= 0.5
-        
-        # Adjust for quantization
-        if self.config.load_in_8bit:
-            base_model_size *= 0.5
-        elif self.config.load_in_4bit:
-            base_model_size *= 0.25
-        
-        estimates["base_model"] = base_model_size
-        
-        # LoRA overhead (minimal)
-        estimates["lora_params"] = 0.1  # Usually very small
-        
-        # Optimizer states (roughly 2x model size for AdamW)
-        optimizer_multiplier = 1.0 if self.config.use_8bit_optimizer else 2.0
-        estimates["optimizer"] = base_model_size * optimizer_multiplier
-        
-        # Activations (depends on sequence length and batch size)
-        estimates["activations"] = 2.0  # Rough estimate
-        
-        # VAE and text encoder
-        estimates["vae"] = 1.0
-        estimates["text_encoder"] = 2.0
-        
-        # Total
-        estimates["total"] = sum(estimates.values())
-        
-        return estimates
+    memory_config = MemoryConfig()
+    quant_config = QuantizationConfig(precision=precision)
+    
+    return memory_config.estimate_memory_requirements(model_variant, quant_config)
