@@ -171,32 +171,6 @@ for dep in "${OPTIONAL_DEPS[@]}"; do
     fi
 done
 
-# Configure Accelerate
-echo -e "\n${CYAN}=== Configuring Accelerate for single GPU training ===${NC}"
-echo -e "${YELLOW}Setting up accelerate configuration for single GPU...${NC}"
-
-mkdir -p ~/.cache/huggingface/accelerate
-
-cat > ~/.cache/huggingface/accelerate/default_config.yaml << 'EOF'
-compute_environment: LOCAL_MACHINE
-distributed_type: 'NO'
-downcast_bf16: 'NO'
-gpu_ids: all
-machine_rank: 0
-main_training_function: main
-mixed_precision: bf16
-num_machines: 1
-num_processes: 1
-rdzv_backend: static
-same_network: true
-tpu_env: []
-tpu_use_cluster: false
-tpu_use_sudo: false
-use_cpu: false
-EOF
-
-echo -e "${GREEN}Accelerate configured for single GPU training with bf16 mixed precision${NC}"
-
 # Create directories for models and datasets
 echo -e "\n${CYAN}=== Creating directory structure ===${NC}"
 DIRECTORIES=(
