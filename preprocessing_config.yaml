@@ -1,0 +1,109 @@
+# WAN LoRA Trainer - Preprocessing Configuration
+# This file demonstrates various preprocessing configurations for different use cases
+
+# Default configuration for WAN 2.1/2.2 models
+default:
+  target_size: [512, 512]        # Resolution for WAN models
+  max_frames: 16                 # Standard frame count for video training
+  fps: 8.0                       # Target framerate for training videos
+  crop_method: "resize"          # "resize" or "center_crop"
+  max_workers: 4                 # Parallel processing workers
+
+# High quality configuration (slower but better quality)
+high_quality:
+  target_size: [768, 768]        # Higher resolution
+  max_frames: 24                 # More frames for longer sequences
+  fps: 12.0                      # Higher framerate
+  crop_method: "center_crop"     # Preserve original aspect areas
+  max_workers: 2                 # Fewer workers to avoid memory issues
+
+# Fast processing configuration (lower quality but faster)
+fast:
+  target_size: [256, 256]        # Lower resolution for speed
+  max_frames: 8                  # Fewer frames
+  fps: 4.0                       # Lower framerate
+  crop_method: "resize"          # Resize for speed
+  max_workers: 8                 # More parallel workers
+
+# Mobile/portrait configuration
+mobile:
+  target_size: [384, 512]        # Portrait aspect ratio
+  max_frames: 12                 # Moderate frame count
+  fps: 6.0                       # Mobile-friendly framerate
+  crop_method: "center_crop"     # Preserve center content
+  max_workers: 4
+
+# Landscape configuration  
+landscape:
+  target_size: [512, 384]        # Landscape aspect ratio
+  max_frames: 16                 # Standard frame count
+  fps: 8.0                       # Standard framerate
+  crop_method: "center_crop"     # Preserve center content
+  max_workers: 4
+
+# Memory efficient configuration (for limited VRAM)
+memory_efficient:
+  target_size: [256, 256]        # Smaller resolution
+  max_frames: 8                  # Fewer frames
+  fps: 4.0                       # Lower framerate
+  crop_method: "resize"          # Memory efficient method
+  max_workers: 2                 # Fewer workers
+
+# Dataset-specific configurations
+datasets:
+  # Configuration for dance/movement videos
+  dance_videos:
+    target_size: [512, 512]
+    max_frames: 24               # Longer sequences for movement
+    fps: 12.0                    # Higher FPS for smooth motion
+    crop_method: "center_crop"
+    max_workers: 3
+  
+  # Configuration for talking head videos
+  talking_heads:
+    target_size: [384, 512]      # Portrait orientation
+    max_frames: 16
+    fps: 8.0
+    crop_method: "center_crop"   # Focus on face area
+    max_workers: 4
+  
+  # Configuration for nature/landscape videos
+  nature_scenes:
+    target_size: [512, 384]      # Landscape orientation  
+    max_frames: 20               # Longer for slow scenes
+    fps: 6.0                     # Lower FPS for nature
+    crop_method: "resize"        # Preserve full scene
+    max_workers: 4
+
+# File type specific settings
+file_handling:
+  video_extensions: [".mp4", ".avi", ".mov", ".mkv", ".webm", ".m4v"]
+  image_extensions: [".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp"]
+  
+  # Cache settings
+  enable_cache: true
+  cache_compression: false       # Set to true to save disk space
+  
+  # Validation settings
+  validate_files: true           # Check file integrity before processing
+  skip_corrupted: true           # Skip corrupted files instead of failing
+
+# Training type specific configurations
+training_modes:
+  # Text-to-Video training
+  t2v:
+    focus_on_motion: true
+    temporal_consistency: high
+    frame_interpolation: false
+  
+  # Image-to-Video training  
+  i2v:
+    condition_frames: 1          # Number of conditioning frames
+    motion_strength: medium      # How much motion to generate
+    preserve_identity: true      # Keep subject consistent
+  
+  # Mixed training (both T2V and I2V)
+  mixed:
+    t2v_weight: 0.7             # Weight for T2V samples
+    i2v_weight: 0.3             # Weight for I2V samples
+    balance_dataset: true        # Auto-balance sample types
