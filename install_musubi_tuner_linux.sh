@@ -159,7 +159,7 @@ OPTIONAL_DEPS=(
     "matplotlib"
     "tensorboard"
     "prompt-toolkit"
-    "xformers"
+    "--extra-index-url https://download.pytorch.org/whl/cu126 xformers"
 )
 
 for dep in "${OPTIONAL_DEPS[@]}"; do
