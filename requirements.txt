@@ -1,70 +1,66 @@
 # Core ML libraries
-torch>=2.0.0
-torchvision>=0.15.0
-transformers>=4.35.0
-diffusers>=0.24.0
-accelerate>=0.24.0
+# huggingface_hub
+# git+https://github.com/huggingface/diffusers.git
+# git+https://github.com/huggingface/transformers.git
+git+https://github.com/huggingface/peft.git
+# accelerate
 
-# LoRA and quantization
-peft>=0.6.0
-bitsandbytes>=0.41.0
+# # LoRA and quantization
+# bitsandbytes
 
-# Video/image processing
-opencv-python>=4.8.0
-Pillow>=10.0.0
-imageio>=2.31.0
-imageio-ffmpeg>=0.4.9
-av>=10.0.0
-decord>=0.6.0
+# # Video/image processing
+# opencv-python
+# Pillow
+# imageio
+# imageio-ffmpeg
+# # av>=10.0.0
+# # decord>=0.6.0
 
-# Audio processing (for video)
-librosa>=0.10.0
+# # Audio processing (for video)
+# # librosa>=0.10.0
 
-# Data handling
-datasets>=2.14.0
-numpy>=1.24.0
-pandas>=2.0.0
-safetensors>=0.4.0
+# # Data handling
+# datasets
+# # numpy>=1.24.0
+# # pandas>=2.0.0
+# # safetensors>=0.4.0
 
-# Utilities
-tqdm>=4.65.0
-wandb>=0.15.0  # Optional: for experiment tracking
-tensorboard>=2.13.0
+# # Utilities
+# tqdm
+# wandb  # Optional: for experiment tracking
+# tensorboard
 
-# Web interface (for future Gradio UI)
-gradio>=3.50.0
+# # # Development tools
+# # pytest>=7.4.0
+# # black>=23.7.0
+# # flake8>=6.0.0
 
-# Development tools
-pytest>=7.4.0
-black>=23.7.0
-flake8>=6.0.0
+# # Optional: Flash Attention for better memory efficiency
+# # flash-attn>=2.3.0  # Uncomment if you have compatible GPU
 
-# Optional: Flash Attention for better memory efficiency
-# flash-attn>=2.3.0  # Uncomment if you have compatible GPU
+# --extra-index-url https://download.pytorch.org/whl/cu126
+# xformers
+# scikit-image
 
-# Optional: xFormers for memory optimization
-# xformers>=0.0.22  # Uncomment for additional memory savings
-scikit-image
+# # # Data handling
+# # numpy
+# # # pandas
+# # jsonlines
 
-# Data handling
-numpy
-pandas
-jsonlines
+# # # GUI framework
+# # gradio>=4.0.0
 
-# GUI framework
-gradio>=4.0.0
+# # # Progress and logging
+# # tqdm
+# # wandb
+# # tensorboard
 
-# Progress and logging
-tqdm
-wandb
-tensorboard
+# # # File handling
+# # pathlib
 
-# File handling
-pathlib
+# # # Configuration management
+# # pyyaml
+# # omegaconf
 
-# Configuration management
-pyyaml
-omegaconf
-
-# Utility libraries
-psutil
+# # # Utility libraries
+# # psutil
