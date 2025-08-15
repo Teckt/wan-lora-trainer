@@ -1,23 +1,49 @@
 # Core ML libraries
 torch>=2.0.0
-torchvision
-torchaudio
+torchvision>=0.15.0
+transformers>=4.35.0
+diffusers>=0.24.0
+accelerate>=0.24.0
 
-# Hugging Face ecosystem
-transformers>=4.40.0
-diffusers>=0.28.0
-accelerate>=0.25.0
-datasets>=2.17.0
-safetensors
+# LoRA and quantization
+peft>=0.6.0
+bitsandbytes>=0.41.0
 
-# Video processing
-opencv-python
-imageio[ffmpeg]
-av
-decord
+# Video/image processing
+opencv-python>=4.8.0
+Pillow>=10.0.0
+imageio>=2.31.0
+imageio-ffmpeg>=0.4.9
+av>=10.0.0
+decord>=0.6.0
 
-# Image processing
-Pillow>=9.5.0
+# Audio processing (for video)
+librosa>=0.10.0
+
+# Data handling
+datasets>=2.14.0
+numpy>=1.24.0
+pandas>=2.0.0
+safetensors>=0.4.0
+
+# Utilities
+tqdm>=4.65.0
+wandb>=0.15.0  # Optional: for experiment tracking
+tensorboard>=2.13.0
+
+# Web interface (for future Gradio UI)
+gradio>=3.50.0
+
+# Development tools
+pytest>=7.4.0
+black>=23.7.0
+flake8>=6.0.0
+
+# Optional: Flash Attention for better memory efficiency
+# flash-attn>=2.3.0  # Uncomment if you have compatible GPU
+
+# Optional: xFormers for memory optimization
+# xformers>=0.0.22  # Uncomment for additional memory savings
 scikit-image
 
 # Data handling
