@@ -1,306 +1,606 @@
-# WAN LoRA Trainer
+# WAN 2.1 LoRA Trainer - Windows Setup
 
-A comprehensive training API for LoRA fine-tuning of WAN (World Action Network) 2.1 and 2.2 video models for Text-to-Video (T2V) and Image-to-Video (I2V) generation.
+Complete Windows installation and training setup for WAN 2.1 LoRA models using kohya-ss/musubi-tuner with fp8 optimization and latent caching.
+
+## 🚀 Quick Start
+
+1. **Download this repository**
+2. **Run installation as Administrator:**
+   ```powershell
+   # Right-click PowerShell -> "Run as Administrator"
+   Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+   .\install_musubi_tuner_windows.ps1
+   ```
+3. **Follow the setup guide:** [WAN_21_TRAINING_GUIDE.md](WAN_21_TRAINING_GUIDE.md)
+
+## 📋 What This Includes
+
+### 🔧 Installation Script
+- **`install_musubi_tuner_windows.ps1`** - Complete automated Windows setup
+  - Installs Python dependencies and PyTorch with CUDA
+  - Sets up kohya-ss/musubi-tuner from GitHub
+  - Configures accelerate for single GPU training
+  - Creates optimized training and inference scripts
+  - Enables fp8 training and latent caching
+
+### 📚 Documentation
+- **`WAN_21_TRAINING_GUIDE.md`** - Comprehensive training guide
+  - Step-by-step setup instructions
+  - Model download links and requirements
+  - Training data preparation
+  - Configuration options
+  - Troubleshooting tips
+
+### 🛠 Helper Tools
+- **`dataset_helper.py`** - Dataset preparation utility
+  - Analyze video datasets
+  - Generate captions automatically
+  - Validate dataset completeness
+  - Create dataset reports
+
+## ✨ Key Features
+
+### 🎯 Optimized for WAN 2.1
+- **fp8 training** - 50% VRAM reduction
+- **Latent caching** - Faster training iterations
+- **Text encoder caching** - Reduced processing overhead
+- **Mixed precision (bf16)** - Balanced speed/quality
+- **Gradient checkpointing** - Memory efficient training
+- **8-bit AdamW optimizer** - Lower memory usage
+
+### 📊 Memory Optimizations
+- **Minimum**: 12GB VRAM (with all optimizations)
+- **Recommended**: 24GB VRAM for comfortable training
+- **Automatic**: VAE tiling and chunking
+- **Efficient**: Block swapping for large models
+
+### 🎬 Complete Workflow
+1. **Model Download** - Guided model acquisition
+2. **Data Preparation** - Video + caption organization
+3. **Latent Caching** - Pre-compute with fp8 optimization
+4. **Text Caching** - Pre-compute encoder outputs
+5. **LoRA Training** - Optimized training loop
+6. **Inference** - Test your trained models
+
+## 📁 What Gets Installed
+
+After running the installation script, you'll have a complete setup at `C:\musubi-tuner`:
+
+```
+C:\musubi-tuner\
+├── 📜 SETUP_INSTRUCTIONS.md     # Complete setup guide
+├── 🚀 activate_environment.ps1  # Quick environment activation  
+├── 📥 download_models.bat       # Model download helper
+├── 🎯 train_wan21_lora.bat     # Complete training pipeline
+├── 🎬 inference_wan21.bat      # Interactive inference
+├── ⚙️ configs/
+│   └── dataset_config.toml     # Training configuration
+├── 📂 models/                   # Model storage
+│   ├── wan2.1/                 # WAN 2.1 DiT models
+│   ├── vae/                    # VAE models
+│   └── text_encoders/          # T5 and CLIP encoders
+├── 📂 datasets/                 # Training data
+│   ├── training_data/videos/   # Your videos + captions
+│   └── cache/                  # Cached latents/embeddings
+└── 📂 output/                   # Training outputs
+    ├── lora_models/            # Trained LoRA weights
+    ├── generated_videos/       # Inference results
+    └── logs/                   # Tensorboard logs
+```
+
+## 🎯 System Requirements
+
+### Hardware
+- **GPU**: NVIDIA GPU with 12GB+ VRAM (24GB recommended)
+- **RAM**: 32GB+ system RAM recommended
+- **Storage**: 50GB+ free space for models and cache
+- **OS**: Windows 10/11
+
+### Software
+- **Python**: 3.10 or higher
+- **CUDA**: Compatible with PyTorch (12.4+ recommended)
+- **Git**: For repository cloning
+- **PowerShell**: For script execution
+
+## 📖 Usage Examples
+
+### 🔍 Analyze Your Dataset
+```bash
+python dataset_helper.py "path/to/your/videos" --mode analyze --output-report dataset_report.json
+```
+
+### 🏷️ Generate Captions
+```bash
+python dataset_helper.py "path/to/your/videos" --mode generate-captions --auto-caption
+```
+
+### 🎯 Train LoRA
+```bash
+# After placing models and data
+train_wan21_lora.bat
+```
+
+### 🎬 Generate Videos
+```bash
+# Interactive mode
+inference_wan21.bat
+
+# Or batch mode with custom prompt
+python src/musubi_tuner/wan_generate_video.py --fp8 --task t2v-1.3B [other args...] --prompt "your prompt here"
+```
+
+## 🏆 Advantages of This Setup
+
+### vs Manual Installation
+✅ **Automated setup** - No manual dependency management  
+✅ **Optimized configuration** - Pre-configured for best performance  
+✅ **Error handling** - Validates requirements and dependencies  
+✅ **Complete workflow** - From installation to inference  
+
+### vs Other Solutions
+✅ **Windows optimized** - Tested specifically for Windows  
+✅ **fp8 enabled** - Latest memory optimizations  
+✅ **Cache optimized** - Faster training iterations  
+✅ **Production ready** - Stable, tested configuration  
+
+## 🛠 Troubleshooting
+
+### Common Solutions
+
+**Installation fails:**
+- Run PowerShell as Administrator
+- Check Python version (3.10+ required)
+- Ensure Git is installed
+- Check internet connection
+
+**Out of memory during training:**
+- Use smaller `network_dim` (16 instead of 32)
+- Reduce `frame_length` in config
+- Enable `vae_cache_cpu`
+- Lower batch size
+
+**Poor quality results:**
+- Use higher quality training data
+- Increase training epochs
+- Better captions for your videos
+- Try different learning rates
+
+**Models won't load:**
+- Verify model file paths
+- Check model file integrity
+- Ensure sufficient disk space
+- Validate model format compatibility
+
+## 📚 Additional Resources
+
+- **Official Docs**: [kohya-ss/musubi-tuner](https://github.com/kohya-ss/musubi-tuner)
+- **WAN Documentation**: [WAN 2.1 Guide](https://github.com/kohya-ss/musubi-tuner/blob/main/docs/wan.md)
+- **Advanced Configuration**: [Advanced Settings](https://github.com/kohya-ss/musubi-tuner/blob/main/docs/advanced_config.md)
+
+## 🤝 Contributing
+
+Found an issue or have improvements? Feel free to:
+- Report bugs in the Issues section
+- Submit pull requests for improvements
+- Share your training results and tips
+
+## 📄 License
+
+This setup script and documentation are provided as-is for educational and research purposes. Please refer to the original [kohya-ss/musubi-tuner license](https://github.com/kohya-ss/musubi-tuner/blob/main/LICENSE) for the underlying software.
+
+## 🙏 Acknowledgments
+
+- **kohya-ss** for the excellent musubi-tuner framework
+- **Wan Team** for the WAN 2.1/2.2 models
+- **ComfyUI Team** for repackaged model weights
+- **Community** for testing and feedback
+
+---
+
+**Ready to train your first WAN 2.1 LoRA? Start with the installation script! 🚀**
+
+A comprehensive training framework for fine-tuning WAN (Diffusion Video) models using LoRA (Low-Rank Adaptation) for video generation tasks.
 
 ## Features
 
-- **Multiple WAN Models**: Support for WAN 2.1 and 2.2 (1.3B and 14B variants)
-- **Memory Optimized**: Advanced chunking and offloading for 24GB VRAM GPUs
-- **Multiple Precision Types**: fp32, fp16, bf16, and fp8 support
-- **LoRA Training**: Efficient adapter training with PEFT
-- **Quantization**: 4-bit and 8-bit quantization support
-- **TREAD Routing**: 20-40% speedup with token routing optimization
-- **Preprocessing Pipeline**: Automatic video/image preprocessing
-- **Memory Management**: Gradient checkpointing, CPU offloading, attention chunking
+### 🎥 Video Model Training
+- **WAN 2.1/2.2 Support**: Full support for WAN Text-to-Video (T2V) and Image-to-Video (I2V) models
+- **LoRA Fine-tuning**: Efficient parameter-efficient training using Low-Rank Adaptation
+- **Component-wise Loading**: Flexible model component management for memory optimization
+
+### 🚀 Memory Optimization
+- **Gradient Checkpointing**: Reduce memory usage during backpropagation
+- **Group Offloading**: Smart CPU/GPU memory management for large models
+- **Attention Optimizations**: xFormers and Flash Attention support
+- **Mixed Precision**: fp16, bf16, and experimental fp8 support
+
+### 🔧 Advanced Features
+- **Automatic Batch Size Optimization**: Find optimal batch size for your hardware
+- **Distributed Training**: Multi-GPU support via Accelerate
+- **Comprehensive Logging**: Integration with Weights & Biases
+- **Flexible Preprocessing**: Advanced video processing pipeline
+- **Checkpointing**: Resume training from any checkpoint
 
 ## Installation
 
-1. Clone the repository:
+### Prerequisites
+- Python 3.8+
+- CUDA 11.8+ (for GPU training)
+- 16GB+ VRAM recommended for default settings
+
+### Setup
+
+1. **Clone the repository:**
 ```bash
 git clone https://github.com/yourusername/wan-lora-trainer.git
 cd wan-lora-trainer
 ```
 
-2. Install dependencies:
+2. **Create a virtual environment:**
+```bash
+python -m venv wan-lora-env
+source wan-lora-env/bin/activate  # On Windows: wan-lora-env\Scripts\activate
+```
+
+3. **Install dependencies:**
 ```bash
 pip install -r requirements.txt
 ```
 
-3. (Optional) Install additional optimizations:
+4. **Install optional optimizations:**
 ```bash
-# For Flash Attention (requires compatible GPU)
-pip install flash-attn>=2.3.0
+# For xFormers (memory efficient attention)
+pip install xformers
 
-# For xFormers memory optimization
-pip install xformers>=0.0.22
+# For Flash Attention
+pip install flash-attn --no-build-isolation
+
+# For 8-bit optimizers
+pip install bitsandbytes
+
+# For FP8 training (requires H100/H800)
+pip install transformer-engine[pytorch]
 ```
 
 ## Quick Start
 
 ### Basic Training
 
-Train a LoRA on WAN 2.1 1.3B model:
+```python
+from src.training import create_training_session
+
+# Create a training session
+orchestrator = create_training_session(
+    data_root="path/to/your/videos",
+    model_id="alibaba-pai/wan-2.1-base",
+    output_dir="./wan-lora-outputs",
+    resolution=(512, 512),
+    num_frames=16,
+    lora_rank=64,
+    learning_rate=1e-4,
+    num_epochs=10
+)
+
+# Run training
+training_stats = orchestrator.train()
+```
+
+### Command Line Training
 
 ```bash
-python train.py \
-    --data_dir "./training_data" \
-    --output_dir "./output" \
-    --model_name "Wan-AI/Wan2.1-T2V-1.3B-Diffusers" \
-    --model_type "text_to_video" \
-    --precision "fp16" \
+python train_wan_lora.py \
+    --data_root ./training_videos \
+    --model_id alibaba-pai/wan-2.1-base \
+    --output_dir ./outputs \
+    --resolution 512 512 \
+    --num_frames 16 \
+    --lora_rank 64 \
     --learning_rate 1e-4 \
+    --num_train_epochs 10 \
     --train_batch_size 1 \
-    --num_train_epochs 5 \
     --gradient_accumulation_steps 4 \
-    --enable_gradient_checkpointing \
-    --attention_chunk_size 1024
+    --mixed_precision fp16 \
+    --gradient_checkpointing \
+    --cpu_offload \
+    --auto_optimize_batch_size
 ```
 
-### Memory-Optimized Training (24GB VRAM)
+## Configuration
 
-For memory-constrained environments:
-
-```bash
-python train.py \
-    --data_dir "./training_data" \
-    --output_dir "./output" \
-    --model_name "Wan-AI/Wan2.1-T2V-1.3B-Diffusers" \
-    --precision "fp16" \
-    --load_in_8bit \
-    --enable_gradient_checkpointing \
-    --enable_cpu_offload \
-    --attention_chunk_size 512 \
-    --ff_chunk_size 1024 \
-    --train_batch_size 1 \
-    --gradient_accumulation_steps 8
-```
-
-### Large Model Training (14B)
-
-For training larger models with aggressive optimizations:
-
-```bash
-python train.py \
-    --data_dir "./training_data" \
-    --output_dir "./output" \
-    --model_name "Wan-AI/Wan2.1-T2V-14B-Diffusers" \
-    --precision "fp8" \
-    --load_in_4bit \
-    --enable_gradient_checkpointing \
-    --enable_cpu_offload \
-    --attention_chunk_size 256 \
-    --ff_chunk_size 512 \
-    --train_batch_size 1 \
-    --gradient_accumulation_steps 16
-```
-
-## Directory Structure
-
-```
-wan-lora-trainer/
-├── src/
-│   ├── models/
-│   │   └── wan/
-│   │       ├── __init__.py
-│   │       ├── config.py          # Configuration and memory optimization
-│   │       ├── model_loader.py    # Model loading and LoRA setup
-│   │       ├── transformer.py     # WAN transformer implementation
-│   │       └── trainer.py         # Training loop and optimization
-│   └── preprocessing/
-│       ├── __init__.py
-│       ├── video_processor.py     # Video preprocessing
-│       ├── image_processor.py     # Image preprocessing
-│       ├── data_manager.py        # Dataset management
-│       └── pipeline.py            # Preprocessing pipeline
-├── train.py                       # Main training script
-├── requirements.txt               # Dependencies
-└── README.md                      # This file
-```
-
-## Configuration Options
-
-### Model Selection
-
-| Model | Size | Description |
-|-------|------|-------------|
-| `Wan-AI/Wan2.1-T2V-1.3B-Diffusers` | 1.3B | WAN 2.1 Text-to-Video (smaller) |
-| `Wan-AI/Wan2.1-T2V-14B-Diffusers` | 14B | WAN 2.1 Text-to-Video (larger) |
-| `Wan-AI/Wan2.2-T2V-1.3B-Diffusers` | 1.3B | WAN 2.2 Text-to-Video (smaller) |
-| `Wan-AI/Wan2.2-T2V-14B-Diffusers` | 14B | WAN 2.2 Text-to-Video (larger) |
-
-### Precision Types
-
-| Precision | Memory Usage | Speed | Quality |
-|-----------|--------------|-------|---------|
-| `fp32` | Highest | Slowest | Best |
-| `fp16` | Medium | Fast | Good |
-| `bf16` | Medium | Fast | Good |
-| `fp8` | Lowest | Fastest | Acceptable |
-
-### Memory Optimization
-
-| Technique | Memory Savings | Trade-off |
-|-----------|----------------|-----------|
-| Gradient Checkpointing | 50-80% | ~20% slower |
-| CPU Offloading | 60-90% | Data transfer overhead |
-| Attention Chunking | 30-70% | Minimal |
-| 8-bit Quantization | ~50% | Slight quality loss |
-| 4-bit Quantization | ~75% | More quality loss |
-
-## Data Format
-
-### Directory Structure
-
-```
-training_data/
-├── videos/
-│   ├── video1.mp4
-│   ├── video2.mp4
-│   └── ...
-├── images/
-│   ├── image1.jpg
-│   ├── image2.png
-│   └── ...
-└── prompts.json
-```
-
-### Prompts File
-
-```json
-{
-    "video1.mp4": "A beautiful sunset over the ocean with waves",
-    "video2.mp4": "A cat playing with a ball of yarn",
-    "image1.jpg": "A serene mountain landscape in autumn",
-    "image2.png": "Abstract art with vibrant colors"
-}
-```
-
-## Memory Usage Guidelines
-
-### For 24GB VRAM (RTX 4090, etc.)
-
-- **WAN 1.3B**: Use fp16, enable checkpointing, chunk size 1024
-- **WAN 14B**: Use fp8 + 8-bit quantization, aggressive chunking (256-512)
-
-### For 16GB VRAM (RTX 4080, etc.)
-
-- **WAN 1.3B**: Use fp16 + 8-bit quantization, chunk size 512
-- **WAN 14B**: Use fp8 + 4-bit quantization, CPU offloading
-
-### For 12GB VRAM (RTX 4070, etc.)
-
-- **WAN 1.3B**: Use fp8 + 4-bit quantization, CPU offloading, small chunks
-- **WAN 14B**: Not recommended (use CPU training instead)
-
-## Advanced Usage
-
-### Custom Configuration
+### Training Configuration
 
 ```python
-from src.models.wan import WanLoRAConfig, WanModelType, PrecisionType
+from src.models.wan import TrainingConfig
 
-config = WanLoRAConfig(
-    model_name="Wan-AI/Wan2.1-T2V-1.3B-Diffusers",
-    model_type=WanModelType.WAN_2_1_1_3B,
-    precision=PrecisionType.FP16,
+config = TrainingConfig(
+    # Model settings
+    model_id="alibaba-pai/wan-2.1-base",
     
     # LoRA settings
     lora_rank=64,
-    lora_alpha=64,
+    lora_alpha=64.0,
     lora_dropout=0.1,
-    
-    # Memory optimization
-    gradient_checkpointing=True,
-    attention_chunk_size=1024,
-    ff_chunk_size=2048,
-    enable_tread_routing=True,
+    lora_target_modules=[
+        "to_q", "to_k", "to_v", "to_out.0",
+        "proj_in", "proj_out",
+        "ff.net.0.proj", "ff.net.2"
+    ],
     
     # Training settings
     learning_rate=1e-4,
+    num_train_epochs=10,
     train_batch_size=1,
-    num_train_epochs=5,
+    gradient_accumulation_steps=4,
+    
+    # Video settings
+    resolution=(512, 512),
+    num_frames=16,
+    
+    # Optimization
+    mixed_precision="fp16",
+    gradient_checkpointing=True,
+    cpu_offload=True,
+    enable_xformers=True,
+    enable_flash_attention=True
 )
 ```
 
-### Resuming Training
+### Memory Optimization
 
-```bash
-python train.py \
-    --resume_from_checkpoint "./output/checkpoint-1000" \
-    --data_dir "./training_data" \
-    --output_dir "./output"
+```python
+from src.models.wan.memory_utils import MemoryConfig
+
+memory_config = MemoryConfig(
+    enable_gradient_checkpointing=True,
+    enable_cpu_offload=True,
+    enable_attention_slicing=True,
+    enable_xformers=True,
+    enable_flash_attention=True,
+    max_memory_usage=0.9  # Use 90% of VRAM
+)
 ```
 
-### Preview Generation
+## Dataset Preparation
 
-Enable preview generation during training:
+### Directory Structure
+
+Organize your training videos in the following structure:
+
+```
+training_data/
+├── video1.mp4
+├── video2.mp4
+├── subfolder/
+│   ├── video3.avi
+│   └── video4.mov
+└── metadata.json  # Optional
+```
+
+### Supported Formats
+- Video: `.mp4`, `.avi`, `.mov`, `.mkv`, `.webm`
+- Duration: 1-30 seconds recommended
+- Resolution: Any (will be resized to target resolution)
+
+### Metadata Format (Optional)
+
+```json
+{
+    "video1.mp4": {
+        "caption": "A cat playing with a ball in the garden",
+        "tags": ["cat", "playing", "garden"]
+    },
+    "video2.mp4": {
+        "caption": "Ocean waves crashing on a rocky shore",
+        "tags": ["ocean", "waves", "nature"]
+    }
+}
+```
+
+## Advanced Usage
+
+### Custom Model Components
+
+```python
+from src.models.wan import WanVideoModel, LoraConfig
+
+# Custom LoRA configuration
+lora_config = LoraConfig(
+    rank=128,  # Higher rank for more parameters
+    alpha=128.0,
+    dropout=0.1,
+    target_modules=[
+        "to_q", "to_k", "to_v",  # Attention layers
+        "proj_in", "proj_out",   # Projection layers
+        "ff.net.0.proj", "ff.net.2"  # Feed-forward layers
+    ]
+)
+
+# Initialize model
+wan_model = WanVideoModel(
+    model_id="alibaba-pai/wan-2.2-base",
+    lora_config=lora_config,
+    device="cuda"
+)
+```
+
+### Memory-Optimized Training
+
+```python
+from src.models.wan import WanPipelineTrainer, TrainingConfig
+from src.models.wan.memory_utils import MemoryOptimizer, GroupOffloadManager
+
+# Setup memory optimization
+memory_optimizer = MemoryOptimizer(device="cuda")
+offload_manager = GroupOffloadManager(device="cuda", cpu_device="cpu")
+
+# Configure for limited VRAM
+config = TrainingConfig(
+    train_batch_size=1,
+    gradient_accumulation_steps=8,
+    mixed_precision="fp16",
+    gradient_checkpointing=True,
+    cpu_offload=True,
+    enable_attention_slicing=True
+)
+
+trainer = WanPipelineTrainer(config, train_dataloader)
+trainer.train()
+```
+
+### Distributed Training
 
 ```bash
-python train.py \
-    --validation_steps 100 \
-    --preview_prompt "A beautiful landscape with mountains" \
-    --data_dir "./training_data" \
-    --output_dir "./output"
+# Multi-GPU training with Accelerate
+accelerate config  # Configure once
+
+accelerate launch train_wan_lora.py \
+    --data_root ./training_videos \
+    --model_id alibaba-pai/wan-2.1-base \
+    --train_batch_size 2 \
+    --gradient_accumulation_steps 2 \
+    --mixed_precision fp16
 ```
+
+## Monitoring and Logging
+
+### Weights & Biases Integration
+
+```python
+# Enable W&B logging
+config = TrainingConfig(
+    report_to="wandb",
+    tracker_project_name="my-wan-project"
+)
+
+# Set W&B API key
+export WANDB_API_KEY="your-api-key"
+```
+
+### Custom Validation
+
+```python
+config = TrainingConfig(
+    validation_steps=500,
+    validation_prompts=[
+        "A red car driving through a city",
+        "A bird flying over mountains",
+        "Rain falling on a window"
+    ],
+    num_validation_videos=3
+)
+```
+
+## Performance Optimization
+
+### Hardware Recommendations
+
+| VRAM | Batch Size | Resolution | Frames | Settings |
+|------|------------|------------|--------|----------|
+| 8GB  | 1 | 256x256 | 8 | fp16, checkpointing, offload |
+| 12GB | 1 | 512x512 | 16 | fp16, checkpointing |
+| 16GB | 2 | 512x512 | 16 | fp16 |
+| 24GB | 4 | 512x512 | 16 | fp16 or bf16 |
+| 48GB+ | 8+ | 768x768 | 24+ | bf16 or fp32 |
+
+### Optimization Tips
+
+1. **Memory Optimization:**
+   - Enable gradient checkpointing for 30-50% memory savings
+   - Use CPU offloading for components not actively training
+   - Enable attention slicing for long sequences
+
+2. **Speed Optimization:**
+   - Use xFormers or Flash Attention for 20-40% speedup
+   - Enable mixed precision (fp16/bf16)
+   - Optimize batch size with auto-optimization
+
+3. **Quality Optimization:**
+   - Higher LoRA rank (64-128) for better adaptation
+   - Longer training with lower learning rate
+   - Proper validation prompts for monitoring
 
 ## Troubleshooting
 
-### Out of Memory Errors
+### Common Issues
 
-1. **Reduce batch size**: `--train_batch_size 1`
-2. **Increase gradient accumulation**: `--gradient_accumulation_steps 8`
-3. **Enable quantization**: `--load_in_8bit` or `--load_in_4bit`
-4. **Reduce chunk sizes**: `--attention_chunk_size 256 --ff_chunk_size 512`
-5. **Enable CPU offloading**: `--enable_cpu_offload`
+1. **Out of Memory Errors:**
+   ```python
+   # Reduce batch size and enable optimizations
+   config.train_batch_size = 1
+   config.gradient_accumulation_steps = 8
+   config.gradient_checkpointing = True
+   config.cpu_offload = True
+   ```
 
-### Slow Training
+2. **Slow Training:**
+   ```python
+   # Enable performance optimizations
+   config.enable_xformers = True
+   config.enable_flash_attention = True
+   config.mixed_precision = "fp16"
+   ```
 
-1. **Disable CPU offloading** if you have enough VRAM
-2. **Increase chunk sizes** if memory allows
-3. **Use fp16 instead of fp32**
-4. **Enable compilation** (automatic in config)
+3. **Model Loading Issues:**
+   ```python
+   # Specify cache directory and check model ID
+   config.cache_dir = "./model_cache"
+   config.model_id = "alibaba-pai/wan-2.1-base"  # Verify correct ID
+   ```
 
-### Quality Issues
+### Debug Mode
 
-1. **Use higher precision**: fp16 instead of fp8
-2. **Avoid 4-bit quantization** if possible
-3. **Increase LoRA rank**: `--lora_rank 128`
-4. **Lower learning rate**: `--learning_rate 5e-5`
+```python
+import logging
+logging.basicConfig(level=logging.DEBUG)
 
-## Performance Benchmarks
+# Enable detailed memory logging
+memory_optimizer = MemoryOptimizer(device="cuda")
+stats = memory_optimizer.get_memory_stats()
+print(f"Memory usage: {stats}")
+```
 
-| Configuration | Model | VRAM | Time/Step | Quality |
-|---------------|-------|------|-----------|---------|
-| fp16 + checkpointing | WAN 1.3B | ~18GB | 2.5s | Excellent |
-| fp16 + 8bit + chunking | WAN 1.3B | ~12GB | 3.2s | Very Good |
-| fp8 + 4bit + offloading | WAN 14B | ~20GB | 8.1s | Good |
+## API Reference
+
+### Core Classes
+
+- `WanVideoModel`: Main model wrapper with LoRA support
+- `WanPipelineTrainer`: Training pipeline orchestrator
+- `WanLoRATrainingOrchestrator`: High-level training interface
+- `MemoryOptimizer`: Memory optimization utilities
+- `MixedPrecisionManager`: Precision and scaling management
+
+### Configuration Classes
+
+- `TrainingConfig`: Main training configuration
+- `LoraConfig`: LoRA-specific settings
+- `MemoryConfig`: Memory optimization settings
+- `PrecisionConfig`: Mixed precision settings
 
 ## Contributing
 
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
-4. Add tests if applicable
+4. Add tests for new functionality
 5. Submit a pull request
 
 ## License
 
-This project is licensed under the Apache License 2.0 - see the LICENSE file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Acknowledgments
 
-- WAN models by [Wan-AI](https://huggingface.co/Wan-AI)
-- LoRA implementation based on [PEFT](https://github.com/huggingface/peft)
-- Memory optimization techniques from [SimpleTuner](https://github.com/bghira/SimpleTuner)
-- HuggingFace [Diffusers](https://github.com/huggingface/diffusers) and [Transformers](https://github.com/huggingface/transformers)
+- HuggingFace Diffusers team for the WAN model implementation
+- Microsoft for the LoRA technique and PEFT library
+- NVIDIA for optimization techniques and tools
 
 ## Citation
 
-If you use this code in your research, please cite:
+If you use this framework in your research, please cite:
 
 ```bibtex
 @software{wan_lora_trainer,
-  title={WAN LoRA Trainer: Memory-Efficient LoRA Training for WAN Video Models},
+  title={WAN LoRA Trainer: Efficient Video Generation Model Fine-tuning},
   author={Your Name},
   year={2024},
   url={https://github.com/yourusername/wan-lora-trainer}
