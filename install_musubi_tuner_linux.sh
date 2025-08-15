@@ -129,6 +129,7 @@ fi
 # Install specific dependencies manually (excluding PyTorch)
 echo -e "\n${CYAN}=== Installing required dependencies ===${NC}"
 DEPENDENCIES=(
+    "torch torchvision --index-url https://download.pytorch.org/whl/cu126"
     "accelerate>=0.21.0"
     "transformers>=4.38.0"
     "diffusers>=0.29.0"
